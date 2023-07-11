@@ -1,8 +1,8 @@
 import 'dart:math';
-import 'dart:ui';
 
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
+import 'package:flame/extensions.dart';
 import 'package:flame/game.dart';
 import 'package:flame/geometry.dart';
 import 'package:flame/input.dart';
@@ -13,13 +13,14 @@ import 'package:flutter/services.dart';
 class ResurrectionRumbleGame extends FlameGame
     with
         HasCollisionDetection,
-        MouseMovementDetector,
         KeyboardEvents,
+        MouseMovementDetector,
         HasGameRef {
   Ray2? ray;
   Ray2? reflection;
   Vector2 origin = Vector2(100, 100);
-  double startAngle = 0;
+  double movementSpeed = 0;
+  double playerAngle = 0;
   Paint paint = Paint();
 
   final _colorTween = ColorTween(
@@ -28,6 +29,7 @@ class ResurrectionRumbleGame extends FlameGame
   );
 
   static const numberOfRays = 1000;
+  static const double fov = 60;
   final List<Ray2> rays = [];
   final List<RaycastResult<ShapeHitbox>> results = [];
 
@@ -81,65 +83,65 @@ class ResurrectionRumbleGame extends FlameGame
   }
 
   @override
-  void onMouseMove(PointerHoverInfo info) {
-    startAngle = info.eventPosition.game.r / 100;
-  }
-
-  @override
   KeyEventResult onKeyEvent(
       RawKeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
     final isKeyDown = event is RawKeyDownEvent;
-    var moveX = 0.0;
-    var moveY = 0.0;
 
     if (isKeyDown) {
-      final double movementSpeed = 10;
-
       if (keysPressed.contains(LogicalKeyboardKey.keyW)) {
-        moveX = cos(startAngle) * movementSpeed;
-        moveY = sin(startAngle) * movementSpeed;
-      } else if (keysPressed.contains(LogicalKeyboardKey.keyA)) {
-        moveX = cos(startAngle - pi / 2) * movementSpeed;
-        moveY = sin(startAngle - pi / 2) * movementSpeed;
-      } else if (keysPressed.contains(LogicalKeyboardKey.keyS)) {
-        moveX = cos(startAngle + pi) * movementSpeed;
-        moveY = sin(startAngle + pi) * movementSpeed;
-      } else if (keysPressed.contains(LogicalKeyboardKey.keyD)) {
-        moveX = cos(startAngle + pi / 2) * movementSpeed;
-        moveY = sin(startAngle + pi / 2) * movementSpeed;
-      } else {
-        return KeyEventResult.ignored;
+        movementSpeed = 100;
       }
-
-      origin += Vector2(moveX, moveY);
+      if (keysPressed.contains(LogicalKeyboardKey.keyS)) {
+        movementSpeed = -100;
+      }
 
       return KeyEventResult.handled;
     } else {
+      movementSpeed = 0;
       return KeyEventResult.ignored;
     }
   }
+
+  @override
+  void onMouseMove(PointerHoverInfo info) =>
+      playerAngle = info.eventPosition.game.r / 100;
 
   var _timePassed = 0.0;
 
   @override
   void update(double dt) {
     super.update(dt);
+    movePlayer(dt);
     _timePassed += dt;
+    final startAngle = playerAngle + toRadians(fov);
     paint.color = _colorTween.transform(0.5 + (sin(_timePassed) / 2))!;
     collisionDetection.raycastAll(
       origin,
       startAngle: startAngle,
-      sweepAngle: 1,
+      sweepAngle: -toRadians(fov),
       numberOfRays: numberOfRays,
       rays: rays,
       out: results,
     );
   }
 
+  void movePlayer(double dt) {
+    origin.x += cos(playerAngle) * movementSpeed * dt;
+    origin.y += sin(playerAngle) * movementSpeed * dt;
+  }
+
+  double toRadians(double deg) => (deg * pi) / 180;
+
   @override
   void render(Canvas canvas) {
     super.render(canvas);
     renderResult(canvas, origin, results, paint);
+  }
+
+  double fixFishEyeDistance(
+      double rayAngle, double playerAngle, double distance) {
+    final angleDiff = rayAngle - playerAngle;
+    return distance * cos(angleDiff);
   }
 
   void renderResult(
@@ -153,6 +155,7 @@ class ResurrectionRumbleGame extends FlameGame
       if (!result.isActive) {
         continue;
       }
+      final resultIndex = results.indexOf(result);
       final intersectionPoint = result.intersectionPoint!.toOffset();
       canvas.drawLine(
         originOffset,
@@ -163,26 +166,61 @@ class ResurrectionRumbleGame extends FlameGame
       canvas.drawLine(originOffset, originOffset + Offset.infinite,
           Paint()..color = Colors.purple);
 
+      final double fixedDistance = fixFishEyeDistance(
+        rays[resultIndex].direction.r,
+        playerAngle,
+        result.distance!,
+      );
+
       final double wallHeight = (45 * 5 / result.distance!) * 277;
 
       final double wallTop = gameRef.size.y / 2 - wallHeight / 2;
       final double wallBottom = gameRef.size.y / 2 + wallHeight / 2;
 
-      final distanceRatio = result.distance! / 1300;
+      final distanceRatio = result.distance! / 2500;
 
-      final Color shadedColor = Colors.blue.withOpacity(1 - distanceRatio);
-      final Paint wallPaint = Paint()..color = shadedColor;
+      final Color wallShadedColor =
+          Colors.blue.withOpacity(1 - distanceRatio * 1.5);
+      final Paint wallPaint = Paint()..color = wallShadedColor;
 
       canvas.drawRect(
         Rect.fromLTRB(
-          results.indexOf(result).toDouble() *
-              (gameRef.size.x / results.length),
+          resultIndex.toDouble() * (gameRef.size.x / results.length),
           wallTop,
-          (results.indexOf(result).toDouble() + 1) *
-              (gameRef.size.x / results.length),
+          (resultIndex.toDouble() + 1) * (gameRef.size.x / results.length),
           wallBottom,
         ),
         wallPaint,
+      );
+
+      final floorGradient = LinearGradient(
+        begin: Alignment.bottomCenter,
+        end: Alignment.topCenter,
+        colors: [
+          Colors.grey.withOpacity(1),
+          Colors.grey.withOpacity(0),
+        ],
+        stops: const [0, 1],
+      );
+
+      final floorPaint = Paint()
+        ..shader = floorGradient.createShader(
+          Rect.fromLTRB(
+            resultIndex.toDouble() * (gameRef.size.x / results.length),
+            wallTop,
+            (resultIndex.toDouble() + 1) * (gameRef.size.x / results.length),
+            gameRef.size.y,
+          ),
+        );
+
+      canvas.drawRect(
+        Rect.fromLTRB(
+          resultIndex.toDouble() * (gameRef.size.x / results.length),
+          wallBottom,
+          (resultIndex.toDouble() + 1) * (gameRef.size.x / results.length),
+          gameRef.size.y,
+        ),
+        floorPaint,
       );
     }
   }
