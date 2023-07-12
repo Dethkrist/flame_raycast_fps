@@ -28,7 +28,8 @@ class ResurrectionRumbleGame extends FlameGame
     end: Colors.red.withOpacity(0.2),
   );
 
-  static const numberOfRays = 1000;
+  static const numberOfRays = 700;
+  static const raysMaxDistance = 2500.0;
   static const double fov = 60;
   final List<Ray2> rays = [];
   final List<RaycastResult<ShapeHitbox>> results = [];
@@ -120,6 +121,7 @@ class ResurrectionRumbleGame extends FlameGame
       startAngle: startAngle,
       sweepAngle: -toRadians(fov),
       numberOfRays: numberOfRays,
+      maxDistance: raysMaxDistance,
       rays: rays,
       out: results,
     );
@@ -151,6 +153,13 @@ class ResurrectionRumbleGame extends FlameGame
     Paint paint,
   ) {
     final originOffset = origin.toOffset();
+
+    final wallPaint = Paint();
+
+    final floorPaint = Paint();
+
+    final ceilingPaint = Paint();
+
     for (final result in results) {
       if (!result.isActive) {
         continue;
@@ -177,51 +186,47 @@ class ResurrectionRumbleGame extends FlameGame
       final double wallTop = gameRef.size.y / 2 - wallHeight / 2;
       final double wallBottom = gameRef.size.y / 2 + wallHeight / 2;
 
-      final distanceRatio = result.distance! / 2500;
+      final distanceRatio = result.distance! / raysMaxDistance;
 
       final Color wallShadedColor =
           Colors.blue.withOpacity(1 - distanceRatio * 1.5);
-      final Paint wallPaint = Paint()..color = wallShadedColor;
+      wallPaint.color = wallShadedColor;
 
       canvas.drawRect(
         Rect.fromLTRB(
           resultIndex.toDouble() * (gameRef.size.x / results.length),
           wallTop,
-          (resultIndex.toDouble() + 1) * (gameRef.size.x / results.length),
+          ((resultIndex.toDouble() + 1) * (gameRef.size.x / results.length)) +
+              3,
           wallBottom,
         ),
         wallPaint,
       );
 
-      final floorGradient = LinearGradient(
-        begin: Alignment.bottomCenter,
-        end: Alignment.topCenter,
-        colors: [
-          Colors.grey.withOpacity(1),
-          Colors.grey.withOpacity(0),
-        ],
-        stops: const [0, 1],
-      );
+      floorPaint.color = Colors.grey;
 
-      final floorPaint = Paint()
-        ..shader = floorGradient.createShader(
-          Rect.fromLTRB(
-            resultIndex.toDouble() * (gameRef.size.x / results.length),
-            wallTop,
-            (resultIndex.toDouble() + 1) * (gameRef.size.x / results.length),
-            gameRef.size.y,
-          ),
-        );
+      ceilingPaint.color = Colors.blueGrey;
 
       canvas.drawRect(
         Rect.fromLTRB(
           resultIndex.toDouble() * (gameRef.size.x / results.length),
           wallBottom,
-          (resultIndex.toDouble() + 1) * (gameRef.size.x / results.length),
+          ((resultIndex.toDouble() + 1) * (gameRef.size.x / results.length)) +
+              3,
           gameRef.size.y,
         ),
         floorPaint,
       );
+
+      canvas.drawRect(
+          Rect.fromLTRB(
+            resultIndex.toDouble() * (gameRef.size.x / results.length),
+            0,
+            ((resultIndex.toDouble() + 1) * (gameRef.size.x / results.length)) +
+                3,
+            wallTop,
+          ),
+          ceilingPaint);
     }
   }
 }
