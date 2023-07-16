@@ -28,7 +28,7 @@ class ResurrectionRumbleGame extends FlameGame
     end: Colors.red.withOpacity(0.2),
   );
 
-  static const numberOfRays = 700;
+  static const numberOfRays = 1000;
   static const raysMaxDistance = 2500.0;
   static const double fov = 60;
   final List<Ray2> rays = [];
@@ -155,78 +155,131 @@ class ResurrectionRumbleGame extends FlameGame
     final originOffset = origin.toOffset();
 
     final wallPaint = Paint();
-
     final floorPaint = Paint();
-
     final ceilingPaint = Paint();
 
-    for (final result in results) {
+    const wallStep = 1;
+    const ceilingFloorStep = 2;
+
+    for (int i = 0; i < results.length; i++) {
+      final result = results[i];
       if (!result.isActive) {
         continue;
       }
-      final resultIndex = results.indexOf(result);
-      final intersectionPoint = result.intersectionPoint!.toOffset();
-      canvas.drawLine(
-        originOffset,
-        intersectionPoint,
-        paint,
-      );
 
-      canvas.drawLine(originOffset, originOffset + Offset.infinite,
-          Paint()..color = Colors.purple);
+      final resultIndex = i ~/ wallStep;
 
-      final double fixedDistance = fixFishEyeDistance(
-        rays[resultIndex].direction.r,
-        playerAngle,
-        result.distance!,
-      );
+      // Render walls
+      if (i % wallStep == 0) {
+        final intersectionPoint = result.intersectionPoint!.toOffset();
+        canvas.drawLine(
+          originOffset,
+          intersectionPoint,
+          paint,
+        );
 
-      final double wallHeight = (45 * 5 / result.distance!) * 277;
+        final double fixedDistance = fixFishEyeDistance(
+          rays[resultIndex].direction.r,
+          playerAngle,
+          result.distance!,
+        );
 
-      final double wallTop = gameRef.size.y / 2 - wallHeight / 2;
-      final double wallBottom = gameRef.size.y / 2 + wallHeight / 2;
+        final double wallHeight = (45 * 5 / result.distance!) * 277;
 
-      final distanceRatio = result.distance! / raysMaxDistance;
+        final double wallTop = gameRef.size.y / 2 - wallHeight / 2;
+        final double wallBottom = gameRef.size.y / 2 + wallHeight / 2;
 
-      final Color wallShadedColor =
-          Colors.blue.withOpacity(1 - distanceRatio * 1.5);
-      wallPaint.color = wallShadedColor;
+        final distanceRatio = result.distance! / raysMaxDistance;
 
-      canvas.drawRect(
-        Rect.fromLTRB(
-          resultIndex.toDouble() * (gameRef.size.x / results.length),
-          wallTop,
-          ((resultIndex.toDouble() + 1) * (gameRef.size.x / results.length)) +
-              3,
-          wallBottom,
-        ),
-        wallPaint,
-      );
+        final Color wallShadedColor =
+            Colors.blue.withOpacity(1 - distanceRatio * 1.5);
+        wallPaint.color = wallShadedColor;
 
-      floorPaint.color = Colors.grey;
-
-      ceilingPaint.color = Colors.blueGrey;
-
-      canvas.drawRect(
-        Rect.fromLTRB(
-          resultIndex.toDouble() * (gameRef.size.x / results.length),
-          wallBottom,
-          ((resultIndex.toDouble() + 1) * (gameRef.size.x / results.length)) +
-              3,
-          gameRef.size.y,
-        ),
-        floorPaint,
-      );
-
-      canvas.drawRect(
+        canvas.drawRect(
           Rect.fromLTRB(
-            resultIndex.toDouble() * (gameRef.size.x / results.length),
-            0,
-            ((resultIndex.toDouble() + 1) * (gameRef.size.x / results.length)) +
-                3,
+            resultIndex.toDouble() *
+                (gameRef.size.x / (results.length ~/ wallStep)),
             wallTop,
+            ((resultIndex.toDouble() + 1) *
+                    (gameRef.size.x / (results.length ~/ wallStep))) +
+                1,
+            wallBottom,
           ),
-          ceilingPaint);
+          wallPaint,
+        );
+      }
+
+      // Render floor
+      if (i % ceilingFloorStep == 0) {
+        final floorGradient = LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [
+            Colors.grey.withOpacity(1),
+            Colors.grey.withOpacity(0),
+          ],
+          stops: const [0, 1],
+        );
+
+        floorPaint.shader = floorGradient.createShader(
+          Rect.fromLTRB(
+            resultIndex.toDouble() *
+                (gameRef.size.x / (results.length ~/ ceilingFloorStep)),
+            gameRef.size.y / 2,
+            (resultIndex.toDouble() + 1) *
+                (gameRef.size.x / (results.length ~/ ceilingFloorStep)),
+            gameRef.size.y,
+          ),
+        );
+
+        canvas.drawRect(
+          Rect.fromLTRB(
+            resultIndex.toDouble() *
+                (gameRef.size.x / (results.length ~/ ceilingFloorStep)),
+            gameRef.size.y / 2,
+            (resultIndex.toDouble() + 2) *
+                (gameRef.size.x / (results.length ~/ ceilingFloorStep)),
+            gameRef.size.y,
+          ),
+          floorPaint,
+        );
+      }
+
+      // Render ceiling
+      if (i % ceilingFloorStep == 0) {
+        final ceilingGradient = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.blueGrey.withOpacity(1),
+            Colors.blueGrey.withOpacity(0),
+          ],
+          stops: const [0, 1],
+        );
+
+        ceilingPaint.shader = ceilingGradient.createShader(
+          Rect.fromLTRB(
+            resultIndex.toDouble() *
+                (gameRef.size.x / (results.length ~/ ceilingFloorStep)),
+            0,
+            (resultIndex.toDouble() + 1) *
+                (gameRef.size.x / (results.length ~/ ceilingFloorStep)),
+            gameRef.size.y / 2,
+          ),
+        );
+
+        canvas.drawRect(
+          Rect.fromLTRB(
+            resultIndex.toDouble() *
+                (gameRef.size.x / (results.length ~/ ceilingFloorStep)),
+            0,
+            (resultIndex.toDouble() + 2) *
+                (gameRef.size.x / (results.length ~/ ceilingFloorStep)),
+            gameRef.size.y / 2,
+          ),
+          ceilingPaint,
+        );
+      }
     }
   }
 }
