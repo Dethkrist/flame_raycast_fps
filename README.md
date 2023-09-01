@@ -1,16 +1,14 @@
-# flame_raycast_fps
+# Raycasting renderer on Flame engine with Flutter
 
-FPS game using custom raycasting renderer on Flame
+It is an experiment to try get out of bounds of FLutter 2d possibilities.
 
-## Getting Started
+I've created simple 2.5d raycasting renderer on Flame.
 
-This project is a starting point for a Flutter application.
+It's just a very raw demo with no decomposition and refactoring now.
 
-A few resources to get you started if this is your first Flutter project:
+In future i think i can finish it to create reusable renderer to create DOOM-like games on Flame.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+Raycasting is very expensive, especially on Flame engine, which is not too powerful for this.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+![Example 1](./screenshots/Screenshot_1.png)
+![Example 2](./screenshots/Screenshot_2.png)

@@ -1,25 +1,27 @@
 import 'dart:math';
-import 'dart:ui';
 
 import 'package:flame/collisions.dart';
 import 'package:flame/components.dart';
+import 'package:flame/extensions.dart';
 import 'package:flame/game.dart';
 import 'package:flame/geometry.dart';
 import 'package:flame/input.dart';
 import 'package:flame/palette.dart';
+import 'package:flame_tiled/flame_tiled.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 class ResurrectionRumbleGame extends FlameGame
     with
         HasCollisionDetection,
-        MouseMovementDetector,
         KeyboardEvents,
+        MouseMovementDetector,
         HasGameRef {
   Ray2? ray;
   Ray2? reflection;
   Vector2 origin = Vector2(100, 100);
-  double startAngle = 0;
+  double movementSpeed = 0;
+  double playerAngle = 0;
   Paint paint = Paint();
 
   final _colorTween = ColorTween(
@@ -28,6 +30,8 @@ class ResurrectionRumbleGame extends FlameGame
   );
 
   static const numberOfRays = 1000;
+  static const raysMaxDistance = 2500.0;
+  static const double fov = 60;
   final List<Ray2> rays = [];
   final List<RaycastResult<ShapeHitbox>> results = [];
 
@@ -37,6 +41,7 @@ class ResurrectionRumbleGame extends FlameGame
     final paint = BasicPalette.gray.paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
+    // add(TiledComponent(RenderableTiledMap.fromFile(fileName, destTileSize)));
     add(ScreenHitbox());
     add(
       CircleComponent(
@@ -81,65 +86,66 @@ class ResurrectionRumbleGame extends FlameGame
   }
 
   @override
-  void onMouseMove(PointerHoverInfo info) {
-    startAngle = info.eventPosition.game.r / 100;
-  }
-
-  @override
   KeyEventResult onKeyEvent(
       RawKeyEvent event, Set<LogicalKeyboardKey> keysPressed) {
     final isKeyDown = event is RawKeyDownEvent;
-    var moveX = 0.0;
-    var moveY = 0.0;
 
     if (isKeyDown) {
-      final double movementSpeed = 10;
-
       if (keysPressed.contains(LogicalKeyboardKey.keyW)) {
-        moveX = cos(startAngle) * movementSpeed;
-        moveY = sin(startAngle) * movementSpeed;
-      } else if (keysPressed.contains(LogicalKeyboardKey.keyA)) {
-        moveX = cos(startAngle - pi / 2) * movementSpeed;
-        moveY = sin(startAngle - pi / 2) * movementSpeed;
-      } else if (keysPressed.contains(LogicalKeyboardKey.keyS)) {
-        moveX = cos(startAngle + pi) * movementSpeed;
-        moveY = sin(startAngle + pi) * movementSpeed;
-      } else if (keysPressed.contains(LogicalKeyboardKey.keyD)) {
-        moveX = cos(startAngle + pi / 2) * movementSpeed;
-        moveY = sin(startAngle + pi / 2) * movementSpeed;
-      } else {
-        return KeyEventResult.ignored;
+        movementSpeed = 100;
       }
-
-      origin += Vector2(moveX, moveY);
+      if (keysPressed.contains(LogicalKeyboardKey.keyS)) {
+        movementSpeed = -100;
+      }
 
       return KeyEventResult.handled;
     } else {
+      movementSpeed = 0;
       return KeyEventResult.ignored;
     }
   }
+
+  @override
+  void onMouseMove(PointerHoverInfo info) =>
+      playerAngle = info.eventPosition.game.r / 100;
 
   var _timePassed = 0.0;
 
   @override
   void update(double dt) {
     super.update(dt);
+    movePlayer(dt);
     _timePassed += dt;
+    final startAngle = playerAngle + toRadians(fov);
     paint.color = _colorTween.transform(0.5 + (sin(_timePassed) / 2))!;
     collisionDetection.raycastAll(
       origin,
       startAngle: startAngle,
-      sweepAngle: 1,
+      sweepAngle: -toRadians(fov),
       numberOfRays: numberOfRays,
+      maxDistance: raysMaxDistance,
       rays: rays,
       out: results,
     );
   }
 
+  void movePlayer(double dt) {
+    origin.x += cos(playerAngle) * movementSpeed * dt;
+    origin.y += sin(playerAngle) * movementSpeed * dt;
+  }
+
+  double toRadians(double deg) => (deg * pi) / 180;
+
   @override
   void render(Canvas canvas) {
     super.render(canvas);
     renderResult(canvas, origin, results, paint);
+  }
+
+  double fixFishEyeDistance(
+      double rayAngle, double playerAngle, double distance) {
+    final angleDiff = rayAngle - playerAngle;
+    return distance * cos(angleDiff);
   }
 
   void renderResult(
@@ -149,41 +155,133 @@ class ResurrectionRumbleGame extends FlameGame
     Paint paint,
   ) {
     final originOffset = origin.toOffset();
-    for (final result in results) {
+
+    final wallPaint = Paint();
+    final floorPaint = Paint();
+    final ceilingPaint = Paint();
+
+    const wallStep = 1;
+    const ceilingFloorStep = 2;
+
+    for (int i = 0; i < results.length; i++) {
+      final result = results[i];
       if (!result.isActive) {
         continue;
       }
-      final intersectionPoint = result.intersectionPoint!.toOffset();
-      canvas.drawLine(
-        originOffset,
-        intersectionPoint,
-        paint,
-      );
 
-      canvas.drawLine(originOffset, originOffset + Offset.infinite,
-          Paint()..color = Colors.purple);
+      final resultIndex = i ~/ wallStep;
 
-      final double wallHeight = (45 * 5 / result.distance!) * 277;
+      // Render walls
+      if (i % wallStep == 0) {
+        final intersectionPoint = result.intersectionPoint!.toOffset();
+        canvas.drawLine(
+          originOffset,
+          intersectionPoint,
+          paint,
+        );
 
-      final double wallTop = gameRef.size.y / 2 - wallHeight / 2;
-      final double wallBottom = gameRef.size.y / 2 + wallHeight / 2;
+        final double fixedDistance = fixFishEyeDistance(
+          rays[resultIndex].direction.r,
+          playerAngle,
+          result.distance!,
+        );
 
-      final distanceRatio = result.distance! / 1300;
+        final double wallHeight = (45 * 5 / result.distance!) * 277;
 
-      final Color shadedColor = Colors.blue.withOpacity(1 - distanceRatio);
-      final Paint wallPaint = Paint()..color = shadedColor;
+        final double wallTop = gameRef.size.y / 2 - wallHeight / 2;
+        final double wallBottom = gameRef.size.y / 2 + wallHeight / 2;
 
-      canvas.drawRect(
-        Rect.fromLTRB(
-          results.indexOf(result).toDouble() *
-              (gameRef.size.x / results.length),
-          wallTop,
-          (results.indexOf(result).toDouble() + 1) *
-              (gameRef.size.x / results.length),
-          wallBottom,
-        ),
-        wallPaint,
-      );
+        final distanceRatio = result.distance! / raysMaxDistance;
+
+        final Color wallShadedColor =
+            Colors.blue.withOpacity(1 - distanceRatio * 1.5);
+        wallPaint.color = wallShadedColor;
+
+        canvas.drawRect(
+          Rect.fromLTRB(
+            resultIndex.toDouble() *
+                (gameRef.size.x / (results.length ~/ wallStep)),
+            wallTop,
+            ((resultIndex.toDouble() + 1) *
+                    (gameRef.size.x / (results.length ~/ wallStep))) +
+                1,
+            wallBottom,
+          ),
+          wallPaint,
+        );
+      }
+
+      // Render floor
+      if (i % ceilingFloorStep == 0) {
+        final floorGradient = LinearGradient(
+          begin: Alignment.bottomCenter,
+          end: Alignment.topCenter,
+          colors: [
+            Colors.grey.withOpacity(1),
+            Colors.grey.withOpacity(0),
+          ],
+          stops: const [0, 1],
+        );
+
+        floorPaint.shader = floorGradient.createShader(
+          Rect.fromLTRB(
+            resultIndex.toDouble() *
+                (gameRef.size.x / (results.length ~/ ceilingFloorStep)),
+            gameRef.size.y / 2,
+            (resultIndex.toDouble() + 1) *
+                (gameRef.size.x / (results.length ~/ ceilingFloorStep)),
+            gameRef.size.y,
+          ),
+        );
+
+        canvas.drawRect(
+          Rect.fromLTRB(
+            resultIndex.toDouble() *
+                (gameRef.size.x / (results.length ~/ ceilingFloorStep)),
+            gameRef.size.y / 2,
+            (resultIndex.toDouble() + 2) *
+                (gameRef.size.x / (results.length ~/ ceilingFloorStep)),
+            gameRef.size.y,
+          ),
+          floorPaint,
+        );
+      }
+
+      // Render ceiling
+      if (i % ceilingFloorStep == 0) {
+        final ceilingGradient = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.blueGrey.withOpacity(1),
+            Colors.blueGrey.withOpacity(0),
+          ],
+          stops: const [0, 1],
+        );
+
+        ceilingPaint.shader = ceilingGradient.createShader(
+          Rect.fromLTRB(
+            resultIndex.toDouble() *
+                (gameRef.size.x / (results.length ~/ ceilingFloorStep)),
+            0,
+            (resultIndex.toDouble() + 1) *
+                (gameRef.size.x / (results.length ~/ ceilingFloorStep)),
+            gameRef.size.y / 2,
+          ),
+        );
+
+        canvas.drawRect(
+          Rect.fromLTRB(
+            resultIndex.toDouble() *
+                (gameRef.size.x / (results.length ~/ ceilingFloorStep)),
+            0,
+            (resultIndex.toDouble() + 2) *
+                (gameRef.size.x / (results.length ~/ ceilingFloorStep)),
+            gameRef.size.y / 2,
+          ),
+          ceilingPaint,
+        );
+      }
     }
   }
 }
