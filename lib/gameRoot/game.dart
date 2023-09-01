@@ -7,6 +7,7 @@ import 'package:flame/game.dart';
 import 'package:flame/geometry.dart';
 import 'package:flame/input.dart';
 import 'package:flame/palette.dart';
+import 'package:flame_tiled/flame_tiled.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -40,6 +41,7 @@ class ResurrectionRumbleGame extends FlameGame
     final paint = BasicPalette.gray.paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2.0;
+    // add(TiledComponent(RenderableTiledMap.fromFile(fileName, destTileSize)));
     add(ScreenHitbox());
     add(
       CircleComponent(
