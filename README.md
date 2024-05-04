@@ -1,6 +1,6 @@
 # Raycasting renderer on Flame engine with Flutter
 
-It is an experiment to try get out of bounds of FLutter 2d possibilities.
+It is an experiment to try get out of bounds of Flutter 2d possibilities.
 
 I've created simple 2.5d raycasting renderer on Flame.
 
